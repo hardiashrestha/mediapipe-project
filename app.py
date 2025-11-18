@@ -6,360 +6,384 @@ from PIL import Image
 import tempfile
 import os
 
-# Initialize MediaPipe solutions
-mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
-mp_hands = mp.solutions.hands
+# Page config
+st.set_page_config(page_title="MediaPipe App", layout="wide")
+st.title("🎯 MediaPipe Detection App")
 
-# Streamlit page configuration
-st.set_page_config(page_title="MediaPipe Multi-Feature App", layout="wide")
-st.title("🎯 MediaPipe Multi-Feature Detection App")
-st.markdown("**Face Detection | Gesture Recognition | Audio Classification | Object Detection**")
-
-# Sidebar for feature selection
-st.sidebar.title("Choose Detection Type")
+# Sidebar
+st.sidebar.title("Select Feature")
 feature = st.sidebar.selectbox(
-    "Select Feature:",
+    "Choose:",
     ["Face Detection", "Gesture Recognition", "Object Detection", "Audio Classification"]
 )
+
+# Initialize MediaPipe
+mp_face = mp.solutions.face_detection
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+
+# Get model path - FIXED FOR WINDOWS
+def get_model_path(model_name):
+    """Returns normalized absolute path"""
+    current_dir = os.path.dirname(os.path.realpath(__file__)) if '__file__' in globals() else os.getcwd()
+    model_path = os.path.join(current_dir, 'models', model_name)
+    normalized_path = os.path.normpath(model_path)
+    return normalized_path
 
 # ==================== FACE DETECTION ====================
 if feature == "Face Detection":
     st.header("👤 Face Detection")
-    st.write("Upload an image or use webcam to detect faces")
     
-    input_type = st.radio("Choose input type:", ["Upload Image", "Use Webcam"])
+    mode = st.radio("Input Type:", ["Image", "Webcam"], key="face_mode")
     
-    if input_type == "Upload Image":
-        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-        
-        if uploaded_file is not None:
-            # Read image
-            image = Image.open(uploaded_file)
-            image_np = np.array(image)
+    if mode == "Image":
+        file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"], key="face_upload")
+        if file:
+            img = Image.open(file)
+            img_np = np.array(img)
+            img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             
-            # Convert RGB to BGR for MediaPipe
-            image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-            
-            # Face detection
-            with mp_face_detection.FaceDetection(
-                model_selection=1, 
-                min_detection_confidence=0.5
-            ) as face_detection:
-                results = face_detection.process(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
-                
-                # Draw face detections
-                if results.detections:
-                    st.success(f"✅ Detected {len(results.detections)} face(s)")
-                    for detection in results.detections:
-                        mp_drawing.draw_detection(image_bgr, detection)
+            with mp_face.FaceDetection(model_selection=1, min_detection_confidence=0.5) as detector:
+                result = detector.process(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
+                if result.detections:
+                    st.success(f"✅ Detected {len(result.detections)} face(s)")
+                    for detection in result.detections:
+                        mp_drawing.draw_detection(img_bgr, detection)
                 else:
-                    st.warning("❌ No faces detected")
+                    st.warning("No faces detected")
             
-            # Convert back to RGB for display
-            output_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-            
-            # Display results
             col1, col2 = st.columns(2)
             with col1:
-                st.subheader("Original Image")
-                st.image(image, use_container_width=True)
+                st.write("**Original**")
+                st.image(img, width=400)
             with col2:
-                st.subheader("Detection Result")
-                st.image(output_image, use_container_width=True)
+                st.write("**Result**")
+                st.image(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), width=400)
     
-    else:  # Webcam option
-        st.info("🎥 Click 'Start' to use webcam")
-        run_webcam = st.checkbox("Start Webcam")
-        FRAME_WINDOW = st.image([])
+    elif mode == "Webcam":
+        st.write("**Webcam Mode**")
+        start = st.checkbox("▶️ Start Webcam", key="face_start")
+        frame_placeholder = st.empty()
         
-        if run_webcam:
+        if start:
             cap = cv2.VideoCapture(0)
-            
-            with mp_face_detection.FaceDetection(
-                model_selection=0, 
-                min_detection_confidence=0.5
-            ) as face_detection:
-                
-                while run_webcam:
+            with mp_face.FaceDetection(model_selection=0, min_detection_confidence=0.5) as detector:
+                while start:
                     ret, frame = cap.read()
                     if not ret:
-                        st.error("Cannot access webcam")
                         break
-                    
-                    # Convert BGR to RGB
-                    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    
-                    # Process
-                    results = face_detection.process(image_rgb)
-                    
-                    # Draw detections
-                    if results.detections:
-                        for detection in results.detections:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    result = detector.process(rgb)
+                    if result.detections:
+                        for detection in result.detections:
                             mp_drawing.draw_detection(frame, detection)
-                    
-                    # Display
-                    FRAME_WINDOW.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            
+                    frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             cap.release()
 
 # ==================== GESTURE RECOGNITION ====================
 elif feature == "Gesture Recognition":
-    st.header("✋ Hand Gesture Recognition")
-    st.write("Recognizes: Thumbs Up, Thumbs Down, Victory, Open Palm, Closed Fist, Pointing Up, ILoveYou")
+    st.header("✋ Gesture Recognition")
     
-    input_type = st.radio("Choose input type:", ["Upload Image", "Use Webcam"])
+    mode = st.radio("Input Type:", ["Image", "Webcam"], key="gesture_mode")
     
-    if input_type == "Upload Image":
-        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+    if mode == "Image":
+        file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"], key="gesture_upload")
+        if file:
+            img = Image.open(file)
+            img_np = np.array(img)
+            
+            try:
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import vision
+                
+                model_path = get_model_path('gesture_recognizer.task')
+                
+                base_opt = python.BaseOptions(model_asset_path=model_path)
+                opt = vision.GestureRecognizerOptions(base_options=base_opt)
+                recognizer = vision.GestureRecognizer.create_from_options(opt)
+                
+                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
+                result = recognizer.recognize(mp_img)
+                
+                if result.gestures:
+                    st.success(f"✅ Detected {len(result.gestures)} hand(s)")
+                    for idx, gesture in enumerate(result.gestures):
+                        st.write(f"**Gesture {idx+1}:** {gesture[0].category_name} ({gesture[0].score:.2f})")
+                else:
+                    st.warning("No hands detected")
+                
+                st.image(img, width=600)
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    elif mode == "Webcam":
+        st.write("**Webcam Mode**")
+        start = st.checkbox("▶️ Start Webcam", key="gesture_start")
+        frame_placeholder = st.empty()
         
-        if uploaded_file is not None:
-            # Read image
-            image = Image.open(uploaded_file)
-            image_np = np.array(image)
-            
-            # Import gesture recognizer
-            from mediapipe.tasks import python
-            from mediapipe.tasks.python import vision
-            
-            # Create gesture recognizer
-            base_options = python.BaseOptions(model_asset_path='models/gesture_recognizer.task')
-            options = vision.GestureRecognizerOptions(base_options=base_options)
-            recognizer = vision.GestureRecognizer.create_from_options(options)
-            
-            # Convert to MediaPipe Image
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_np)
-            
-            # Recognize gestures
-            recognition_result = recognizer.recognize(mp_image)
-            
-            # Display results
-            if recognition_result.gestures:
-                st.success(f"✅ Detected {len(recognition_result.gestures)} hand(s)")
-                
-                # Draw hand landmarks
-                image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-                
-                for idx, (gesture, handedness) in enumerate(zip(recognition_result.gestures, recognition_result.handedness)):
-                    gesture_name = gesture[0].category_name
-                    gesture_score = gesture[0].score
-                    hand_side = handedness[0].category_name
-                    
-                    st.write(f"**Hand {idx+1}:** {hand_side} hand - Gesture: **{gesture_name}** (Confidence: {gesture_score:.2f})")
-                    
-                    # Draw landmarks
-                    if recognition_result.hand_landmarks:
-                        hand_landmarks = recognition_result.hand_landmarks[idx]
-                        
-                        # Convert normalized coordinates to pixel coordinates
-                        h, w, c = image_bgr.shape
-                        for landmark in hand_landmarks:
-                            x = int(landmark.x * w)
-                            y = int(landmark.y * h)
-                            cv2.circle(image_bgr, (x, y), 5, (0, 255, 0), -1)
-                
-                output_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("Original Image")
-                    st.image(image, use_container_width=True)
-                with col2:
-                    st.subheader("Detection Result")
-                    st.image(output_image, use_container_width=True)
-            else:
-                st.warning("❌ No hands detected")
-                st.image(image, use_container_width=True)
-    
-    else:  # Webcam
-        st.info("🎥 Click 'Start' to use webcam")
-        run_webcam = st.checkbox("Start Webcam")
-        FRAME_WINDOW = st.image([])
-        gesture_text = st.empty()
-        
-        if run_webcam:
+        if start:
             cap = cv2.VideoCapture(0)
-            
-            with mp_hands.Hands(
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
-            ) as hands:
-                
-                while run_webcam:
+            with mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5) as hands:
+                while start:
                     ret, frame = cap.read()
                     if not ret:
-                        st.error("Cannot access webcam")
                         break
-                    
-                    # Convert BGR to RGB
-                    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    
-                    # Process
-                    results = hands.process(image_rgb)
-                    
-                    # Draw hand landmarks
-                    if results.multi_hand_landmarks:
-                        for hand_landmarks in results.multi_hand_landmarks:
-                            mp_drawing.draw_landmarks(
-                                frame,
-                                hand_landmarks,
-                                mp_hands.HAND_CONNECTIONS
-                            )
-                        gesture_text.success(f"✅ Detected {len(results.multi_hand_landmarks)} hand(s)")
-                    else:
-                        gesture_text.info("No hands detected")
-                    
-                    # Display
-                    FRAME_WINDOW.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    result = hands.process(rgb)
+                    if result.multi_hand_landmarks:
+                        for hand in result.multi_hand_landmarks:
+                            mp_drawing.draw_landmarks(frame, hand, mp_hands.HAND_CONNECTIONS)
+                    frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             cap.release()
 
 # ==================== OBJECT DETECTION ====================
 elif feature == "Object Detection":
     st.header("📦 Object Detection")
-    st.write("Detects common objects like person, car, dog, cat, etc.")
     
-    input_type = st.radio("Choose input type:", ["Upload Image", "Use Webcam"])
+    # FIXED: Changed key to avoid conflicts
+    mode = st.radio("Input Type:", ["Image", "Webcam"], key="object_mode")
     
-    if input_type == "Upload Image":
-        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+    if mode == "Image":
+        file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"], key="object_upload")
+        if file:
+            img = Image.open(file)
+            img_np = np.array(img)
+            
+            try:
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import vision
+                
+                model_path = get_model_path('efficientdet_lite0.tflite')
+                
+                if not os.path.exists(model_path):
+                    st.error(f"❌ Model file not found at: {model_path}")
+                else:
+                    base_opt = python.BaseOptions(model_asset_path=model_path)
+                    opt = vision.ObjectDetectorOptions(base_options=base_opt, max_results=5, score_threshold=0.5)
+                    detector = vision.ObjectDetector.create_from_options(opt)
+                    
+                    mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
+                    result = detector.detect(mp_img)
+                    
+                    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+                    
+                    if result.detections:
+                        st.success(f"✅ Detected {len(result.detections)} object(s)")
+                        for detection in result.detections:
+                            bbox = detection.bounding_box
+                            cv2.rectangle(img_bgr, 
+                                        (bbox.origin_x, bbox.origin_y),
+                                        (bbox.origin_x + bbox.width, bbox.origin_y + bbox.height),
+                                        (0, 255, 0), 2)
+                            label = f"{detection.categories[0].category_name}: {detection.categories[0].score:.2f}"
+                            cv2.putText(img_bgr, label, (bbox.origin_x, bbox.origin_y - 10),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                            st.write(f"**{detection.categories[0].category_name}** - {detection.categories[0].score:.2f}")
+                    else:
+                        st.warning("No objects detected")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("**Original**")
+                        st.image(img, width=400)
+                    with col2:
+                        st.write("**Result**")
+                        st.image(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), width=400)
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    elif mode == "Webcam":
+        # *** WEBCAM FOR OBJECT DETECTION - NOW VISIBLE ***
+        st.write("**🎥 Webcam Mode - Real-Time Object Detection**")
+        st.info("Check the box below to start detecting objects")
         
-        if uploaded_file is not None:
-            # Read image
-            image = Image.open(uploaded_file)
-            image_np = np.array(image)
-            
-            # Import object detector
-            from mediapipe.tasks import python
-            from mediapipe.tasks.python import vision
-            
-            # Create object detector
-            base_options = python.BaseOptions(model_asset_path='models/efficientdet_lite0.tflite')
-            options = vision.ObjectDetectorOptions(
-                base_options=base_options,
-                max_results=5,
-                score_threshold=0.5
-            )
-            detector = vision.ObjectDetector.create_from_options(options)
-            
-            # Convert to MediaPipe Image
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_np)
-            
-            # Detect objects
-            detection_result = detector.detect(mp_image)
-            
-            # Draw results
-            if detection_result.detections:
-                st.success(f"✅ Detected {len(detection_result.detections)} object(s)")
+        start = st.checkbox("▶️ Start Webcam", key="object_start")
+        frame_placeholder = st.empty()
+        info_placeholder = st.empty()
+        
+        if start:
+            try:
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import vision
                 
-                image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                model_path = get_model_path('efficientdet_lite0.tflite')
                 
-                for detection in detection_result.detections:
-                    # Get bounding box
-                    bbox = detection.bounding_box
-                    start_point = (int(bbox.origin_x), int(bbox.origin_y))
-                    end_point = (int(bbox.origin_x + bbox.width), int(bbox.origin_y + bbox.height))
+                if not os.path.exists(model_path):
+                    st.error(f"❌ Model file not found at: {model_path}")
+                else:
+                    base_opt = python.BaseOptions(model_asset_path=model_path)
+                    opt = vision.ObjectDetectorOptions(
+                        base_options=base_opt,
+                        max_results=5,
+                        score_threshold=0.5,
+                        running_mode=vision.RunningMode.VIDEO
+                    )
+                    detector = vision.ObjectDetector.create_from_options(opt)
                     
-                    # Draw rectangle
-                    cv2.rectangle(image_bgr, start_point, end_point, (0, 255, 0), 2)
+                    cap = cv2.VideoCapture(0)
+                    frame_count = 0
                     
-                    # Get label
-                    category = detection.categories[0]
-                    label = f"{category.category_name}: {category.score:.2f}"
+                    info_placeholder.success("✅ Webcam started! Point at objects...")
                     
-                    # Draw label
-                    cv2.putText(image_bgr, label, (start_point[0], start_point[1] - 10),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    while start:
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        
+                        frame_count += 1
+                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                        
+                        result = detector.detect_for_video(mp_img, frame_count)
+                        
+                        objects = []
+                        if result.detections:
+                            for detection in result.detections:
+                                bbox = detection.bounding_box
+                                cv2.rectangle(frame,
+                                            (bbox.origin_x, bbox.origin_y),
+                                            (bbox.origin_x + bbox.width, bbox.origin_y + bbox.height),
+                                            (0, 255, 0), 3)
+                                label = f"{detection.categories[0].category_name}"
+                                objects.append(label)
+                                cv2.putText(frame, label, (bbox.origin_x, bbox.origin_y - 10),
+                                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                            info_placeholder.success(f"✅ Detected: {', '.join(objects)}")
+                        else:
+                            info_placeholder.info("🔍 Looking for objects...")
+                        
+                        frame_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                     
-                    st.write(f"**{category.category_name}** - Confidence: {category.score:.2f}")
-                
-                output_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("Original Image")
-                    st.image(image, use_container_width=True)
-                with col2:
-                    st.subheader("Detection Result")
-                    st.image(output_image, use_container_width=True)
-            else:
-                st.warning("❌ No objects detected")
-                st.image(image, use_container_width=True)
-    
-    else:  # Webcam
-        st.info("🎥 Webcam mode for object detection - Upload image for now")
+                    cap.release()
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 # ==================== AUDIO CLASSIFICATION ====================
 elif feature == "Audio Classification":
     st.header("🎵 Audio Classification")
-    st.write("Classifies sounds like music, speech, dog bark, car horn, etc.")
     
-    st.info("📁 Upload an audio file (.wav format)")
+    mode = st.radio("Input Type:", ["Audio File", "Microphone"], key="audio_mode")
     
-    uploaded_audio = st.file_uploader("Choose an audio file...", type=["wav"])
-    
-    if uploaded_audio is not None:
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
-            tmp_file.write(uploaded_audio.read())
-            tmp_file_path = tmp_file.name
-        
-        st.audio(uploaded_audio, format='audio/wav')
-        
-        try:
-            # Import audio classifier
-            from mediapipe.tasks import python
-            from mediapipe.tasks.python import audio
+    if mode == "Audio File":
+        file = st.file_uploader("Upload Audio (.wav)", type=["wav"], key="audio_upload")
+        if file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp:
+                tmp.write(file.read())
+                tmp_path = tmp.name
             
-            # Create audio classifier
-            base_options = python.BaseOptions(model_asset_path='models/yamnet.tflite')
-            options = audio.AudioClassifierOptions(
-                base_options=base_options,
-                max_results=5
-            )
-            classifier = audio.AudioClassifier.create_from_options(options)
+            st.audio(file)
             
-            # Load audio file
-            from mediapipe.tasks.python.components.containers import audio_data as audio_data_module
-            
-            # Read audio file
-            import wave
-            with wave.open(tmp_file_path, 'rb') as wav_file:
-                sample_rate = wav_file.getframerate()
-                num_channels = wav_file.getnchannels()
-                audio_frames = wav_file.readframes(wav_file.getnframes())
-                audio_array = np.frombuffer(audio_frames, dtype=np.int16)
-            
-            # Convert to float32
-            audio_float = audio_array.astype(np.float32) / 32768.0
-            
-            # Create AudioData object
-            audio_data_obj = audio_data_module.AudioData.create_from_array(
-                audio_float,
-                sample_rate
-            )
-            
-            # Classify
-            classification_result = classifier.classify(audio_data_obj)
-            
-            # Display results
-            if classification_result.classifications:
-                st.success("✅ Audio Classification Results:")
+            try:
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import audio
+                from mediapipe.tasks.python.components.containers import audio_data as audio_data_module
+                import wave
                 
-                for idx, classification in enumerate(classification_result.classifications[0].categories[:5]):
-                    st.write(f"**{idx+1}. {classification.category_name}** - Confidence: {classification.score:.4f}")
-            else:
-                st.warning("❌ No classification results")
+                model_path = get_model_path('yamnet.tflite')
+                
+                if not os.path.exists(model_path):
+                    st.error(f"❌ Model file not found at: {model_path}")
+                else:
+                    base_opt = python.BaseOptions(model_asset_path=model_path)
+                    opt = audio.AudioClassifierOptions(base_options=base_opt, max_results=5)
+                    classifier = audio.AudioClassifier.create_from_options(opt)
+                    
+                    with wave.open(tmp_path, 'rb') as wav:
+                        rate = wav.getframerate()
+                        frames = wav.readframes(wav.getnframes())
+                        audio_arr = np.frombuffer(frames, dtype=np.int16)
+                    
+                    audio_float = audio_arr.astype(np.float32) / 32768.0
+                    audio_obj = audio_data_module.AudioData.create_from_array(audio_float, rate)
+                    
+                    # Classify audio
+                    result = classifier.classify(audio_obj)
+                    
+                    # FIXED: Correct way to access results
+                    if result and len(result) > 0:
+                        st.success("✅ Classification Results:")
+                        
+                        # Result is a list of AudioClassifierResult objects
+                        classification_list = result[0]
+                        
+                        # Get top 5 categories
+                        for idx, category in enumerate(classification_list.classifications[0].categories[:5]):
+                            st.write(f"**{idx+1}. {category.category_name}** - {category.score:.4f}")
+                    else:
+                        st.warning("No results")
+            except Exception as e:
+                st.error(f"Error: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+    
+    elif mode == "Microphone":
+        # *** MICROPHONE FOR AUDIO ***
+        st.write("**🎤 Microphone Mode - Real-Time Audio Classification**")
+        st.info("Check the box below to start listening")
         
-        except Exception as e:
-            st.error(f"Error processing audio: {str(e)}")
-            st.info("Make sure the audio file is in WAV format with 16kHz sample rate")
+        start = st.checkbox("▶️ Start Microphone", key="audio_start")
+        results_placeholder = st.empty()
         
-        finally:
-            # Clean up temporary file
-            if os.path.exists(tmp_file_path):
-                os.remove(tmp_file_path)
+        if start:
+            try:
+                import pyaudio
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import audio
+                from mediapipe.tasks.python.components.containers import audio_data as audio_data_module
+                
+                CHUNK = 15600
+                FORMAT = pyaudio.paInt16
+                CHANNELS = 1
+                RATE = 16000
+                
+                model_path = get_model_path('yamnet.tflite')
+                
+                if not os.path.exists(model_path):
+                    st.error(f"❌ Model file not found at: {model_path}")
+                else:
+                    base_opt = python.BaseOptions(model_asset_path=model_path)
+                    opt = audio.AudioClassifierOptions(base_options=base_opt, max_results=5)
+                    classifier = audio.AudioClassifier.create_from_options(opt)
+                    
+                    p = pyaudio.PyAudio()
+                    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
+                                  input=True, frames_per_buffer=CHUNK)
+                    
+                    st.success("🎤 Listening... Speak or make sounds!")
+                    
+                    while start:
+                        data = stream.read(CHUNK, exception_on_overflow=False)
+                        audio_arr = np.frombuffer(data, dtype=np.int16)
+                        audio_float = audio_arr.astype(np.float32) / 32768.0
+                        audio_obj = audio_data_module.AudioData.create_from_array(audio_float, RATE)
+                        
+                        result = classifier.classify(audio_obj)
+                        
+                        # FIXED: Correct way to access real-time results
+                        if result and len(result) > 0:
+                            classification_list = result[0]
+                            
+                            with results_placeholder.container():
+                                st.markdown("### 🎯 Live Results:")
+                                for idx, cat in enumerate(classification_list.classifications[0].categories[:5]):
+                                    conf = cat.score * 100
+                                    bar = "█" * int(conf / 5)
+                                    st.markdown(f"**{idx+1}. {cat.category_name}**  \n`{bar}` {conf:.1f}%")
+                    
+                    stream.stop_stream()
+                    stream.close()
+                    p.terminate()
+                
+            except ImportError:
+                st.error("❌ Install PyAudio: pip install pyaudio")
+            except Exception as e:
+                st.error(f"Error: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
 # Footer
 st.sidebar.markdown("---")
-st.sidebar.info("Built with MediaPipe & Streamlit")
+st.sidebar.write("Built with MediaPipe")
