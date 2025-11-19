@@ -1,6 +1,6 @@
-mediapipe
-opencv-python-headless
-streamlit
-numpy
-pillow
+streamlit==1.30.0
+mediapipe==0.10.9
+opencv-python-headless==4.8.1.78
+numpy==1.24.3
+Pillow==10.2.0
 pyaudio
