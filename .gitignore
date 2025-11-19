@@ -1,1 +1,47 @@
-/mp_env
+# Virtual Environment
+mp_env/
+venv/
+env/
+*.pyc
+__pycache__/
+
+# System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.log
+*.tmp
+temp/
+tmp/
+
+# Streamlit cache
+.streamlit/
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
